@@ -1,0 +1,14 @@
+# Foundry
+out/
+cache/
+broadcast/
+*.env
+.env
+
+# Dependencies installed via git clone (re-fetchable)
+lib/openzeppelin-contracts/
+lib/forge-std/
+
+# Editor
+.vscode/
+.idea/
