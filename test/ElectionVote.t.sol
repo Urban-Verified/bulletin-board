@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {Election} from "../src/Election.sol";
+import {ElectionBase} from "../src/election/ElectionBase.sol";
 import {IElection} from "../src/interfaces/IElection.sol";
 import {KeyperSet} from "../src/KeyperSet.sol";
 import {VotingTypes} from "../src/VotingTypes.sol";
@@ -138,11 +139,11 @@ contract ElectionVoteTest is Test {
         vm.warp(votingStart);
 
         vm.prank(voter);
-        vm.expectRevert(abi.encodeWithSelector(Election.InvalidVoteFee.selector, selfSubmitFee, 0));
+        vm.expectRevert(abi.encodeWithSelector(ElectionBase.InvalidVoteFee.selector, selfSubmitFee, 0));
         election.submitVote(_ballot(_pseudonym("pseudo-1"), 10));
 
         vm.prank(voteProxy);
-        vm.expectRevert(abi.encodeWithSelector(Election.InvalidVoteFee.selector, 0, selfSubmitFee));
+        vm.expectRevert(abi.encodeWithSelector(ElectionBase.InvalidVoteFee.selector, 0, selfSubmitFee));
         election.submitVote{value: selfSubmitFee}(_ballot(_pseudonym("pseudo-1"), 10));
     }
 
@@ -150,13 +151,13 @@ contract ElectionVoteTest is Test {
         vm.warp(votingStart - 1);
 
         vm.prank(voter);
-        vm.expectRevert(abi.encodeWithSelector(Election.VotingNotStarted.selector, votingStart - 1));
+        vm.expectRevert(abi.encodeWithSelector(ElectionBase.VotingNotStarted.selector, votingStart - 1));
         election.submitVote{value: selfSubmitFee}(_ballot(_pseudonym("pseudo-1"), 10));
 
         vm.warp(votingEnd);
 
         vm.prank(voter);
-        vm.expectRevert(abi.encodeWithSelector(Election.VotingClosed.selector, votingEnd));
+        vm.expectRevert(abi.encodeWithSelector(ElectionBase.VotingClosed.selector, votingEnd));
         election.submitVote{value: selfSubmitFee}(_ballot(_pseudonym("pseudo-1"), 10));
     }
 
@@ -165,7 +166,7 @@ contract ElectionVoteTest is Test {
 
         vm.warp(votingStart);
         vm.prank(voter);
-        vm.expectRevert(Election.DKGNotFinalized.selector);
+        vm.expectRevert(ElectionBase.DKGNotFinalized.selector);
         notReadyElection.submitVote{value: selfSubmitFee}(_ballot(_pseudonym("pseudo-1"), 10));
     }
 
@@ -176,14 +177,14 @@ contract ElectionVoteTest is Test {
         missingProof.zkProof = bytes("");
 
         vm.prank(voter);
-        vm.expectRevert(Election.InvalidVotePayload.selector);
+        vm.expectRevert(ElectionBase.InvalidVotePayload.selector);
         election.submitVote{value: selfSubmitFee}(missingProof);
 
         VotingTypes.Ballot memory badVk = _ballot(_pseudonym("pseudo-1"), 10);
         badVk.vk = new bytes(47);
 
         vm.prank(voter);
-        vm.expectRevert(Election.InvalidVotePayload.selector);
+        vm.expectRevert(ElectionBase.InvalidVotePayload.selector);
         election.submitVote{value: selfSubmitFee}(badVk);
 
         VotingTypes.Ballot memory badCiphertexts = _ballot(_pseudonym("pseudo-1"), 10);
@@ -192,18 +193,18 @@ contract ElectionVoteTest is Test {
         badCiphertexts.ciphertexts[1] = VotingTypes.Ciphertext({c1: _g2Point(12), c2: _g2Point(13)});
 
         vm.prank(voter);
-        vm.expectRevert(Election.InvalidVotePayload.selector);
+        vm.expectRevert(ElectionBase.InvalidVotePayload.selector);
         election.submitVote{value: selfSubmitFee}(badCiphertexts);
 
         VotingTypes.Ballot memory badPoint = _ballot(_pseudonym("pseudo-1"), 10);
         badPoint.ciphertexts[1].c1 = new bytes(95);
 
         vm.prank(voter);
-        vm.expectRevert(abi.encodeWithSelector(Election.InvalidG2PointLength.selector, 95));
+        vm.expectRevert(abi.encodeWithSelector(ElectionBase.InvalidG2PointLength.selector, 95));
         election.submitVote{value: selfSubmitFee}(badPoint);
 
         vm.prank(voter);
-        vm.expectRevert(Election.InvalidPseudonym.selector);
+        vm.expectRevert(ElectionBase.InvalidPseudonym.selector);
         election.submitVote{value: selfSubmitFee}(_ballot(bytes32(0), 10));
     }
 

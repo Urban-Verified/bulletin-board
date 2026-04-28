@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {Election} from "../src/Election.sol";
+import {ElectionBase} from "../src/election/ElectionBase.sol";
 import {IElection} from "../src/interfaces/IElection.sol";
 import {KeyperSet} from "../src/KeyperSet.sol";
 import {VotingTypes} from "../src/VotingTypes.sol";
@@ -83,13 +84,13 @@ contract ElectionAdminTest is Test {
         _finalizeResult();
 
         vm.prank(owner);
-        vm.expectRevert(Election.InvalidConfig.selector);
+        vm.expectRevert(ElectionBase.InvalidConfig.selector);
         election.withdrawFees(payable(address(0)));
 
         RejectETH rejectEth = new RejectETH();
 
         vm.prank(owner);
-        vm.expectRevert(Election.EtherTransferFailed.selector);
+        vm.expectRevert(ElectionBase.EtherTransferFailed.selector);
         election.withdrawFees(payable(address(rejectEth)));
     }
 

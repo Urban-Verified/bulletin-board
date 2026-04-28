@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {Election} from "../src/Election.sol";
+import {ElectionBase} from "../src/election/ElectionBase.sol";
 import {IElection} from "../src/interfaces/IElection.sol";
 import {KeyperSet} from "../src/KeyperSet.sol";
 import {VotingTypes} from "../src/VotingTypes.sol";
@@ -105,12 +106,12 @@ contract ElectionTallyTest is Test {
     function test_submitDecryptionShareRejectsInvalidCallersAndTiming() external {
         vm.warp(votingEnd - 1);
         vm.prank(keyper1);
-        vm.expectRevert(abi.encodeWithSelector(Election.VotingStillOpen.selector, votingEnd - 1));
+        vm.expectRevert(abi.encodeWithSelector(ElectionBase.VotingStillOpen.selector, votingEnd - 1));
         election.submitDecryptionShare(_shares(40), _proofs(11));
 
         vm.warp(votingEnd);
         vm.prank(outsider);
-        vm.expectRevert(abi.encodeWithSelector(Election.UnauthorizedKeyper.selector, outsider));
+        vm.expectRevert(abi.encodeWithSelector(ElectionBase.UnauthorizedKeyper.selector, outsider));
         election.submitDecryptionShare(_shares(40), _proofs(11));
     }
 
@@ -120,7 +121,7 @@ contract ElectionTallyTest is Test {
         vm.startPrank(keyper1);
         election.submitDecryptionShare(_shares(40), _proofs(11));
 
-        vm.expectRevert(abi.encodeWithSelector(Election.AlreadyVoted.selector, keyper1));
+        vm.expectRevert(abi.encodeWithSelector(ElectionBase.AlreadyVoted.selector, keyper1));
         election.submitDecryptionShare(_shares(41), _proofs(21));
         vm.stopPrank();
 
@@ -129,14 +130,14 @@ contract ElectionTallyTest is Test {
         shortShares[1] = _g2Point(41);
 
         vm.prank(keyper2);
-        vm.expectRevert(Election.InvalidDecryptionSharePayload.selector);
+        vm.expectRevert(ElectionBase.InvalidDecryptionSharePayload.selector);
         election.submitDecryptionShare(shortShares, _proofs(11));
 
         bytes[] memory badShare = _shares(50);
         badShare[1] = new bytes(95);
 
         vm.prank(keyper2);
-        vm.expectRevert(abi.encodeWithSelector(Election.InvalidG2PointLength.selector, 95));
+        vm.expectRevert(abi.encodeWithSelector(ElectionBase.InvalidG2PointLength.selector, 95));
         election.submitDecryptionShare(badShare, _proofs(21));
     }
 
@@ -164,7 +165,7 @@ contract ElectionTallyTest is Test {
         assertEq(storedResult.keyperIndices[1], 2);
 
         vm.prank(voter);
-        vm.expectRevert(abi.encodeWithSelector(Election.VotingClosed.selector, votingEnd));
+        vm.expectRevert(abi.encodeWithSelector(ElectionBase.VotingClosed.selector, votingEnd));
         election.submitVote{value: selfSubmitFee}(_ballot(_pseudonym("pseudo-2"), 20));
 
         vm.prank(keyper1);
@@ -188,19 +189,19 @@ contract ElectionTallyTest is Test {
         shortTotals[1] = 2;
 
         vm.prank(tallyAggregator);
-        vm.expectRevert(Election.InvalidResultPayload.selector);
+        vm.expectRevert(ElectionBase.InvalidResultPayload.selector);
         election.publishResult(shortTotals, _keyperIndices());
 
         uint8[] memory noKeypers = new uint8[](0);
         vm.prank(tallyAggregator);
-        vm.expectRevert(Election.InvalidResultPayload.selector);
+        vm.expectRevert(ElectionBase.InvalidResultPayload.selector);
         election.publishResult(_totals(), noKeypers);
     }
 
     function test_finalizeResultRejectsBeforeVotingEndsAndAllowsRepublish() external {
         vm.warp(votingEnd - 1);
         vm.prank(tallyAggregator);
-        vm.expectRevert(abi.encodeWithSelector(Election.VotingStillOpen.selector, votingEnd - 1));
+        vm.expectRevert(abi.encodeWithSelector(ElectionBase.VotingStillOpen.selector, votingEnd - 1));
         election.publishResult(_totals(), _keyperIndices());
 
         vm.warp(votingEnd);

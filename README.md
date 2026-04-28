@@ -21,6 +21,12 @@ The contract scope covers:
 - `src/KeyperSet.sol`
 - `src/ElectionRegistry.sol`
 - `src/Election.sol`
+- `src/election/ElectionBase.sol`
+- `src/election/ElectionDKG.sol`
+- `src/election/ElectionVoting.sol`
+- `src/election/ElectionTally.sol`
+- `src/election/ElectionDecryption.sol`
+- `src/election/ElectionAdmin.sol`
 - `src/VotingTypes.sol`
 
 ### Interfaces

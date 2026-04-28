@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {Election} from "../src/Election.sol";
+import {ElectionBase} from "../src/election/ElectionBase.sol";
 import {IElection} from "../src/interfaces/IElection.sol";
 import {KeyperSet} from "../src/KeyperSet.sol";
 import {VotingTypes} from "../src/VotingTypes.sol";
@@ -61,7 +62,7 @@ contract ElectionDKGTest is Test {
         bytes[] memory committeePKs = _committeePKs(10);
 
         vm.prank(outsider);
-        vm.expectRevert(abi.encodeWithSelector(Election.UnauthorizedKeyper.selector, outsider));
+        vm.expectRevert(abi.encodeWithSelector(ElectionBase.UnauthorizedKeyper.selector, outsider));
         election.voteDKGResult(pkElection, committeePKs);
     }
 
@@ -72,7 +73,7 @@ contract ElectionDKGTest is Test {
         vm.startPrank(keyper1);
         election.voteDKGResult(pkElection, committeePKs);
 
-        vm.expectRevert(abi.encodeWithSelector(Election.AlreadyVoted.selector, keyper1));
+        vm.expectRevert(abi.encodeWithSelector(ElectionBase.AlreadyVoted.selector, keyper1));
         election.voteDKGResult(_g2Point(2), _committeePKs(20));
         vm.stopPrank();
     }
@@ -83,13 +84,13 @@ contract ElectionDKGTest is Test {
         bytes[] memory committeePKs = _committeePKs(10);
 
         vm.prank(keyper1);
-        vm.expectRevert(abi.encodeWithSelector(Election.InvalidG2PointLength.selector, 95));
+        vm.expectRevert(abi.encodeWithSelector(ElectionBase.InvalidG2PointLength.selector, 95));
         election.voteDKGResult(shortPoint, committeePKs);
 
         committeePKs[1] = shortPoint;
 
         vm.prank(keyper1);
-        vm.expectRevert(abi.encodeWithSelector(Election.InvalidG2PointLength.selector, 95));
+        vm.expectRevert(abi.encodeWithSelector(ElectionBase.InvalidG2PointLength.selector, 95));
         election.voteDKGResult(pkElection, committeePKs);
     }
 
@@ -99,7 +100,7 @@ contract ElectionDKGTest is Test {
         committeePKs[1] = _g2Point(11);
 
         vm.prank(keyper1);
-        vm.expectRevert(abi.encodeWithSelector(Election.InvalidCommitteeLength.selector, 2, 3));
+        vm.expectRevert(abi.encodeWithSelector(ElectionBase.InvalidCommitteeLength.selector, 2, 3));
         election.voteDKGResult(_g2Point(1), committeePKs);
     }
 
@@ -114,7 +115,7 @@ contract ElectionDKGTest is Test {
         election.voteDKGResult(firstPkElection, firstCommitteePKs);
 
         vm.prank(keyper2);
-        vm.expectRevert(Election.DKGSubmissionMismatch.selector);
+        vm.expectRevert(ElectionBase.DKGSubmissionMismatch.selector);
         election.voteDKGResult(secondPkElection, secondCommitteePKs);
 
         vm.prank(keyper3);
@@ -136,7 +137,7 @@ contract ElectionDKGTest is Test {
         election.voteDKGResult(pkElection, committeePKs);
 
         vm.prank(keyper3);
-        vm.expectRevert(Election.AlreadyFinalized.selector);
+        vm.expectRevert(ElectionBase.AlreadyFinalized.selector);
         election.voteDKGResult(pkElection, committeePKs);
     }
 

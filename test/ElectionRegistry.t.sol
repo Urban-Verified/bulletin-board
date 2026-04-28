@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {Election} from "../src/Election.sol";
+import {ElectionBase} from "../src/election/ElectionBase.sol";
 import {ElectionRegistry} from "../src/ElectionRegistry.sol";
 import {IKeyperSet} from "../src/interfaces/IKeyperSet.sol";
 import {KeyperSet} from "../src/KeyperSet.sol";
@@ -121,7 +122,7 @@ contract ElectionRegistryTest is Test {
         params.votingEnd = params.votingStart;
 
         vm.prank(voteManager);
-        vm.expectRevert(Election.InvalidConfig.selector);
+        vm.expectRevert(ElectionBase.InvalidConfig.selector);
         registry.publishElection(keyperSet, params);
     }
 
