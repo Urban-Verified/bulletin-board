@@ -33,7 +33,9 @@ contract ElectionRegistry is AccessControl, IElectionRegistry {
         private
         returns (address electionAddr)
     {
-        if (!keyperSet.isFinalized() || keyperSet.getNumMembers() == 0 || keyperSet.getThreshold() == 0) {
+        uint64 numMembers = keyperSet.getNumMembers();
+        uint64 threshold = keyperSet.getThreshold();
+        if (numMembers == 0 || threshold == 0 || threshold > numMembers) {
             revert InvalidKeyperSet();
         }
 

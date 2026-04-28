@@ -8,9 +8,8 @@ import {VotingTypes} from "../src/VotingTypes.sol";
 
 contract ScaffoldTest is Test {
     function test_scaffold_deploys() external {
-        KeyperSet keyperSet = new KeyperSet(address(this));
+        KeyperSet keyperSet = new KeyperSet(_members(), 2);
         ElectionRegistry registry = new ElectionRegistry(address(this));
-        _configureKeyperSet(keyperSet);
 
         address election = registry.publishElection(keyperSet, _params());
         assertTrue(election != address(0));
@@ -31,13 +30,9 @@ contract ScaffoldTest is Test {
         });
     }
 
-    function _configureKeyperSet(KeyperSet keyperSet) private {
-        address[] memory members = new address[](2);
+    function _members() private pure returns (address[] memory members) {
+        members = new address[](2);
         members[0] = address(0x1001);
         members[1] = address(0x1002);
-
-        keyperSet.addMembers(members);
-        keyperSet.setThreshold(2);
-        keyperSet.setFinalized();
     }
 }

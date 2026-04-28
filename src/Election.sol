@@ -25,8 +25,6 @@ contract Election is AccessControl, IElection {
     error DKGNotFinalized();
     error EtherTransferFailed();
     error DirectETHUnsupported();
-    error ResultAlreadyFinalized();
-    error ResultNotFinalized();
     error VotingClosed(uint256 timestamp);
     error VotingNotStarted(uint256 timestamp);
     error VotingStillOpen(uint256 timestamp);
@@ -58,6 +56,7 @@ contract Election is AccessControl, IElection {
     bytes private electionPublicKey;
     bytes[] private committeePublicKeys;
     VotingTypes.BallotRecord[] private ballotRecords;
+    mapping(bytes32 => uint256) private ballotIndexPlusOneByPseudonym;
     VotingTypes.EncryptedTally private encryptedTally;
     bool private aggregatePublished;
     VotingTypes.DecryptionShare[] private decryptionShares;
@@ -115,13 +114,11 @@ contract Election is AccessControl, IElection {
         hasVotedForDKG[msg.sender] = true;
         dkgVoteCount += 1;
 
-        // forge-lint: disable-next-line(asm-keccak256)
-        bytes32 digest = keccak256(pkElection);
-        emit DKGVoteRegistered(msg.sender, digest);
+        emit DKGVoteRegistered(msg.sender, pkElection);
 
         if (dkgVoteCount >= keyperSet.getThreshold()) {
             dkgFinalized = true;
-            emit DKGCompleted(digest, electionPublicKey, committeePublicKeys);
+            emit DKGResultPublished(electionPublicKey, committeePublicKeys);
         }
     }
 
@@ -131,7 +128,6 @@ contract Election is AccessControl, IElection {
     }
 
     function submitVote(VotingTypes.Ballot calldata ballot) external payable {
-        if (resultFinalized) revert ResultAlreadyFinalized();
         if (!dkgFinalized) revert DKGNotFinalized();
         if (block.timestamp < votingStart) revert VotingNotStarted(block.timestamp);
         if (block.timestamp >= votingEnd) revert VotingClosed(block.timestamp);
@@ -160,11 +156,13 @@ contract Election is AccessControl, IElection {
         record.ballot.voterSignature = ballot.voterSignature;
         record.ballot.wrAttestation = ballot.wrAttestation;
         record.submittedAt = uint64(block.timestamp);
-        record.feePaid = msg.value;
+        record.submittedBy = msg.sender;
 
         for (uint256 index = 0; index < ballot.ciphertexts.length; index++) {
             record.ballot.ciphertexts.push(ballot.ciphertexts[index]);
         }
+
+        ballotIndexPlusOneByPseudonym[ballot.pseudonym] = ballotIndex + 1;
 
         emit VoteSubmitted(ballot.pseudonym, ballotIndex);
     }
@@ -174,13 +172,9 @@ contract Election is AccessControl, IElection {
     }
 
     function getBallot(bytes32 pseudonym) external view returns (VotingTypes.Ballot memory ballot) {
-        for (uint256 index = ballotRecords.length; index > 0; index--) {
-            VotingTypes.BallotRecord storage record = ballotRecords[index - 1];
-            if (record.ballot.pseudonym == pseudonym) {
-                return record.ballot;
-            }
-        }
-        revert BallotNotFound(pseudonym);
+        uint256 ballotIndexPlusOne = ballotIndexPlusOneByPseudonym[pseudonym];
+        if (ballotIndexPlusOne == 0) revert BallotNotFound(pseudonym);
+        return ballotRecords[ballotIndexPlusOne - 1].ballot;
     }
 
     function getBallots(uint256 startIndex, uint256 count) external view returns (VotingTypes.Ballot[] memory ballots) {
@@ -191,7 +185,6 @@ contract Election is AccessControl, IElection {
     }
 
     function publishAggregate(VotingTypes.EncryptedTally calldata aggregate) external onlyRole(TALLY_AGGREGATOR_ROLE) {
-        if (resultFinalized) revert ResultAlreadyFinalized();
         if (!dkgFinalized) revert DKGNotFinalized();
         if (block.timestamp < votingEnd) revert VotingStillOpen(block.timestamp);
         if (aggregate.aggregates.length != numCandidates) revert InvalidAggregatePayload();
@@ -213,7 +206,6 @@ contract Election is AccessControl, IElection {
     }
 
     function submitDecryptionShare(bytes[] calldata shares, VotingTypes.DLEQProof[] calldata proofs) external {
-        if (resultFinalized) revert ResultAlreadyFinalized();
         if (!dkgFinalized) revert DKGNotFinalized();
         if (block.timestamp < votingEnd) revert VotingStillOpen(block.timestamp);
         if (!keyperSet.isMember(msg.sender)) revert UnauthorizedKeyper(msg.sender);
@@ -226,7 +218,8 @@ contract Election is AccessControl, IElection {
 
         decryptionShares.push();
         VotingTypes.DecryptionShare storage share = decryptionShares[decryptionShares.length - 1];
-        share.keyperIndex = _getKeyperIndex(msg.sender);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        share.keyperIndex = uint8(keyperSet.getMemberIndex(msg.sender));
         share.submittedAt = uint64(block.timestamp);
 
         for (uint256 index = 0; index < shares.length; index++) {
@@ -249,7 +242,6 @@ contract Election is AccessControl, IElection {
         external
         onlyRole(TALLY_AGGREGATOR_ROLE)
     {
-        if (resultFinalized) revert ResultAlreadyFinalized();
         if (!dkgFinalized) revert DKGNotFinalized();
         if (block.timestamp < votingEnd) revert VotingStillOpen(block.timestamp);
         if (totals.length != numCandidates || keyperIndices.length == 0) revert InvalidResultPayload();
@@ -266,12 +258,10 @@ contract Election is AccessControl, IElection {
     }
 
     function getResult() external view returns (VotingTypes.ElectionResult memory result) {
-        if (!resultFinalized) revert ResultNotFinalized();
         return electionResult;
     }
 
     function getPhase() external view returns (uint8 phase) {
-        if (resultFinalized) return 5;
         if (block.timestamp >= votingEnd) return 4;
         if (block.timestamp >= votingStart) return 3;
         if (dkgFinalized) return 2;
@@ -291,7 +281,7 @@ contract Election is AccessControl, IElection {
         config.budget = budget;
         config.thresholdN = keyperSet.getNumMembers();
         config.thresholdT = keyperSet.getThreshold();
-        config.keyperAddresses = _getKeyperAddresses();
+        config.keyperAddresses = keyperSet.getMembers();
         config.pkWR = wrPublicKey;
 
         dkgResult.pkElection = electionPublicKey;
@@ -299,7 +289,6 @@ contract Election is AccessControl, IElection {
     }
 
     function withdrawFees(address payable recipient) external onlyRole(DEFAULT_ADMIN_ROLE) returns (uint256 amount) {
-        if (!resultFinalized) revert ResultNotFinalized();
         if (recipient == address(0)) revert InvalidConfig();
         amount = address(this).balance;
         (bool ok,) = recipient.call{value: amount}("");
@@ -339,24 +328,5 @@ contract Election is AccessControl, IElection {
             }
         }
         return true;
-    }
-
-    function _getKeyperIndex(address keyper) private view returns (uint8 keyperIndex) {
-        uint64 numMembers = keyperSet.getNumMembers();
-        for (uint64 index = 0; index < numMembers; index++) {
-            if (keyperSet.getMember(index) == keyper) {
-                // forge-lint: disable-next-line(unsafe-typecast)
-                return uint8(index);
-            }
-        }
-        revert UnauthorizedKeyper(keyper);
-    }
-
-    function _getKeyperAddresses() private view returns (address[] memory keyperAddresses) {
-        uint64 numMembers = keyperSet.getNumMembers();
-        keyperAddresses = new address[](numMembers);
-        for (uint64 index = 0; index < numMembers; index++) {
-            keyperAddresses[index] = keyperSet.getMember(index);
-        }
     }
 }

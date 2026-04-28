@@ -27,26 +27,18 @@ contract ElectionHandler is Test {
     uint256 public expectedFees;
 
     constructor() {
-        KeyperSet keyperSet = new KeyperSet(owner);
-        election = new Election(owner, 1, keyperSet, _params());
-
         address[] memory members = new address[](3);
         members[0] = keyper1;
         members[1] = keyper2;
         members[2] = keyper3;
 
-        vm.startPrank(owner);
-        keyperSet.addMembers(members);
-        keyperSet.setThreshold(2);
-        keyperSet.setFinalized();
-        vm.stopPrank();
+        KeyperSet keyperSet = new KeyperSet(members, 2);
+        election = new Election(owner, 1, keyperSet, _params());
 
         _finalizeDkg();
     }
 
     function submitSelfVote(uint8 voterSeed, bytes32 pseudonymSeed) external {
-        if (election.isResultFinalized()) return;
-
         address voter = voterSeed % 2 == 0 ? voter1 : voter2;
         vm.deal(voter, 100 ether);
         vm.warp(votingStart);
@@ -59,8 +51,6 @@ contract ElectionHandler is Test {
     }
 
     function submitProxyVote(bytes32 pseudonymSeed) external {
-        if (election.isResultFinalized()) return;
-
         vm.warp(votingStart);
         vm.prank(voteProxy);
 
@@ -70,8 +60,6 @@ contract ElectionHandler is Test {
     }
 
     function submitShare(uint8 keyperSeed) external {
-        if (election.isResultFinalized()) return;
-
         address keyper = _keyper(keyperSeed);
         vm.warp(votingEnd);
         vm.prank(keyper);
@@ -82,8 +70,6 @@ contract ElectionHandler is Test {
     }
 
     function finalizeResult() external {
-        if (election.isResultFinalized()) return;
-
         uint256[] memory totals = new uint256[](3);
         totals[0] = expectedBallots;
 

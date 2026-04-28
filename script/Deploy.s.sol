@@ -32,10 +32,8 @@ contract DeployScript is Script {
         DeploymentConfig memory config = _loadConfig();
 
         vm.startBroadcast();
-        keyperSet = new KeyperSet(config.admin);
+        keyperSet = new KeyperSet(config.keypers, config.threshold);
         registry = new ElectionRegistry(config.admin);
-
-        _configureKeyperSet(keyperSet, config);
 
         address electionAddress = registry.publishElection(keyperSet, _electionParams(config));
         election = Election(payable(electionAddress));
@@ -97,12 +95,6 @@ contract DeployScript is Script {
             revert InvalidThreshold(thresholdRaw, keyperCount);
         }
         threshold = _toUint64("KEYPER_THRESHOLD", thresholdRaw);
-    }
-
-    function _configureKeyperSet(KeyperSet keyperSet, DeploymentConfig memory config) private {
-        keyperSet.addMembers(config.keypers);
-        keyperSet.setThreshold(config.threshold);
-        keyperSet.setFinalized();
     }
 
     function _electionParams(DeploymentConfig memory config) private view returns (VotingTypes.ElectionParams memory) {

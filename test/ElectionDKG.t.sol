@@ -20,33 +20,29 @@ contract ElectionDKGTest is Test {
     address private voteProxy = address(0x970);
 
     function setUp() external {
-        keyperSet = new KeyperSet(owner);
-        election = new Election(owner, 1, keyperSet, _params());
-
         address[] memory members = new address[](3);
         members[0] = keyper1;
         members[1] = keyper2;
         members[2] = keyper3;
 
-        vm.startPrank(owner);
-        keyperSet.addMembers(members);
-        keyperSet.setThreshold(2);
-        keyperSet.setFinalized();
-        vm.stopPrank();
+        keyperSet = new KeyperSet(members, 2);
+        election = new Election(owner, 1, keyperSet, _params());
     }
 
     function test_voteDKGResultFinalizesAtThreshold() external {
         bytes memory pkElection = _g2Point(1);
         bytes[] memory committeePKs = _committeePKs(10);
-        bytes32 digest = keccak256(pkElection);
+
+        vm.expectEmit(true, false, false, true, address(election));
+        emit IElection.DKGVoteRegistered(keyper1, pkElection);
 
         vm.prank(keyper1);
         election.voteDKGResult(pkElection, committeePKs);
 
         assertFalse(election.isDKGFinalized());
 
-        vm.expectEmit(true, true, false, true, address(election));
-        emit IElection.DKGCompleted(digest, pkElection, committeePKs);
+        vm.expectEmit(false, false, false, true, address(election));
+        emit IElection.DKGResultPublished(pkElection, committeePKs);
 
         vm.prank(keyper2);
         election.voteDKGResult(pkElection, committeePKs);

@@ -26,19 +26,13 @@ contract ElectionVoteTest is Test {
     uint256 private selfSubmitFee = 0.01 ether;
 
     function setUp() external {
-        keyperSet = new KeyperSet(owner);
-        election = new Election(owner, 1, keyperSet, _params());
-
         address[] memory members = new address[](3);
         members[0] = keyper1;
         members[1] = keyper2;
         members[2] = keyper3;
 
-        vm.startPrank(owner);
-        keyperSet.addMembers(members);
-        keyperSet.setThreshold(2);
-        keyperSet.setFinalized();
-        vm.stopPrank();
+        keyperSet = new KeyperSet(members, 2);
+        election = new Election(owner, 1, keyperSet, _params());
 
         _finalizeDkg();
         vm.deal(voter, 1 ether);
@@ -92,6 +86,10 @@ contract ElectionVoteTest is Test {
         bytes32 firstPseudonym = ballots[0].pseudonym;
         bytes32 secondPseudonym = ballots[1].pseudonym;
         assertEq(firstPseudonym, secondPseudonym);
+
+        VotingTypes.Ballot memory latestBallot = election.getBallot(_pseudonym("same-pseudonym"));
+        assertEq(latestBallot.vk, ballots[1].vk);
+        assertEq(latestBallot.ciphertexts[0].c1, ballots[1].ciphertexts[0].c1);
     }
 
     function test_getBallotsAndCiphertextsReturnRanges() external {

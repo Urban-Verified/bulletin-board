@@ -26,19 +26,13 @@ contract ElectionTallyTest is Test {
     uint256 private selfSubmitFee = 0.01 ether;
 
     function setUp() external {
-        keyperSet = new KeyperSet(owner);
-        election = new Election(owner, 1, keyperSet, _params());
-
         address[] memory members = new address[](3);
         members[0] = keyper1;
         members[1] = keyper2;
         members[2] = keyper3;
 
-        vm.startPrank(owner);
-        keyperSet.addMembers(members);
-        keyperSet.setThreshold(2);
-        keyperSet.setFinalized();
-        vm.stopPrank();
+        keyperSet = new KeyperSet(members, 2);
+        election = new Election(owner, 1, keyperSet, _params());
 
         _finalizeDkg();
         _submitVote();
@@ -146,7 +140,7 @@ contract ElectionTallyTest is Test {
         election.submitDecryptionShare(badShare, _proofs(21));
     }
 
-    function test_finalizeResultStoresResultAndLocksElection() external {
+    function test_finalizeResultStoresResult() external {
         uint256[] memory totals = _totals();
         uint8[] memory keyperIndices = _keyperIndices();
 
@@ -158,7 +152,7 @@ contract ElectionTallyTest is Test {
         election.publishResult(totals, keyperIndices);
 
         assertTrue(election.isResultFinalized());
-        assertEq(election.getPhase(), 5);
+        assertEq(election.getPhase(), 4);
 
         VotingTypes.ElectionResult memory storedResult = election.getResult();
         assertEq(storedResult.tally.length, 3);
@@ -170,12 +164,12 @@ contract ElectionTallyTest is Test {
         assertEq(storedResult.keyperIndices[1], 2);
 
         vm.prank(voter);
-        vm.expectRevert(Election.ResultAlreadyFinalized.selector);
+        vm.expectRevert(abi.encodeWithSelector(Election.VotingClosed.selector, votingEnd));
         election.submitVote{value: selfSubmitFee}(_ballot(_pseudonym("pseudo-2"), 20));
 
         vm.prank(keyper1);
-        vm.expectRevert(Election.ResultAlreadyFinalized.selector);
         election.submitDecryptionShare(_shares(40), _proofs(11));
+        assertEq(election.getDecryptionShares().length, 1);
     }
 
     function test_finalizeResultRejectsUnauthorizedAndInvalidPayloads() external {
@@ -203,7 +197,7 @@ contract ElectionTallyTest is Test {
         election.publishResult(_totals(), noKeypers);
     }
 
-    function test_finalizeResultRejectsBeforeVotingEndsAndTwice() external {
+    function test_finalizeResultRejectsBeforeVotingEndsAndAllowsRepublish() external {
         vm.warp(votingEnd - 1);
         vm.prank(tallyAggregator);
         vm.expectRevert(abi.encodeWithSelector(Election.VotingStillOpen.selector, votingEnd - 1));
@@ -213,14 +207,19 @@ contract ElectionTallyTest is Test {
         vm.startPrank(tallyAggregator);
         election.publishResult(_totals(), _keyperIndices());
 
-        vm.expectRevert(Election.ResultAlreadyFinalized.selector);
-        election.publishResult(_totals(), _keyperIndices());
+        uint256[] memory updatedTotals = _totals();
+        updatedTotals[0] = 42;
+        election.publishResult(updatedTotals, _keyperIndices());
         vm.stopPrank();
+
+        VotingTypes.ElectionResult memory storedResult = election.getResult();
+        assertEq(storedResult.tally[0], 42);
     }
 
-    function test_getResultRejectsBeforeFinalization() external {
-        vm.expectRevert(Election.ResultNotFinalized.selector);
-        election.getResult();
+    function test_getResultReturnsEmptyResultBeforePublication() external view {
+        VotingTypes.ElectionResult memory result = election.getResult();
+        assertEq(result.tally.length, 0);
+        assertEq(result.keyperIndices.length, 0);
     }
 
     function _finalizeDkg() private {

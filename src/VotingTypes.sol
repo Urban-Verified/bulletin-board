@@ -41,7 +41,7 @@ library VotingTypes {
     struct BallotRecord {
         Ballot ballot;
         uint64 submittedAt;
-        uint256 feePaid;
+        address submittedBy;
     }
 
     // forge-lint: disable-next-line(pascal-case-struct)

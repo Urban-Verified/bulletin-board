@@ -5,8 +5,43 @@ import {Test} from "forge-std/Test.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {Election} from "../src/Election.sol";
 import {ElectionRegistry} from "../src/ElectionRegistry.sol";
+import {IKeyperSet} from "../src/interfaces/IKeyperSet.sol";
 import {KeyperSet} from "../src/KeyperSet.sol";
 import {VotingTypes} from "../src/VotingTypes.sol";
+
+contract MockKeyperSet is IKeyperSet {
+    uint64 private numMembers;
+    uint64 private threshold;
+
+    constructor(uint64 numMembers_, uint64 threshold_) {
+        numMembers = numMembers_;
+        threshold = threshold_;
+    }
+
+    function getNumMembers() external view returns (uint64) {
+        return numMembers;
+    }
+
+    function getMember(uint64) external pure returns (address) {
+        return address(0);
+    }
+
+    function getMembers() external pure returns (address[] memory) {
+        return new address[](0);
+    }
+
+    function getMemberIndex(address) external pure returns (uint64) {
+        return 0;
+    }
+
+    function getThreshold() external view returns (uint64) {
+        return threshold;
+    }
+
+    function isMember(address) external pure returns (bool) {
+        return false;
+    }
+}
 
 contract ElectionRegistryTest is Test {
     ElectionRegistry private registry;
@@ -21,8 +56,7 @@ contract ElectionRegistryTest is Test {
 
     function setUp() external {
         registry = new ElectionRegistry(voteManager);
-        keyperSet = new KeyperSet(voteManager);
-        _configureKeyperSet(keyperSet);
+        keyperSet = new KeyperSet(_members(), 2);
     }
 
     function test_createElectionStoresAddressAndConfiguresElection() external {
@@ -91,26 +125,23 @@ contract ElectionRegistryTest is Test {
         registry.publishElection(keyperSet, params);
     }
 
-    function test_createElectionRejectsUnfinalizedOrEmptyKeyperSet() external {
-        KeyperSet unfinalizedKeyperSet = new KeyperSet(voteManager);
-        KeyperSet emptyKeyperSet = new KeyperSet(voteManager);
-
-        address[] memory members = new address[](1);
-        members[0] = address(0x1001);
+    function test_createElectionRejectsInvalidKeyperSet() external {
+        MockKeyperSet emptyKeyperSet = new MockKeyperSet(0, 0);
+        MockKeyperSet zeroThresholdKeyperSet = new MockKeyperSet(2, 0);
+        MockKeyperSet highThresholdKeyperSet = new MockKeyperSet(2, 3);
 
         vm.startPrank(voteManager);
-        unfinalizedKeyperSet.addMembers(members);
-        unfinalizedKeyperSet.setThreshold(1);
-        emptyKeyperSet.setFinalized();
-        vm.stopPrank();
 
-        vm.prank(voteManager);
-        vm.expectRevert(ElectionRegistry.InvalidKeyperSet.selector);
-        registry.publishElection(unfinalizedKeyperSet, _params());
-
-        vm.prank(voteManager);
         vm.expectRevert(ElectionRegistry.InvalidKeyperSet.selector);
         registry.publishElection(emptyKeyperSet, _params());
+
+        vm.expectRevert(ElectionRegistry.InvalidKeyperSet.selector);
+        registry.publishElection(zeroThresholdKeyperSet, _params());
+
+        vm.expectRevert(ElectionRegistry.InvalidKeyperSet.selector);
+        registry.publishElection(highThresholdKeyperSet, _params());
+
+        vm.stopPrank();
     }
 
     function _params() private view returns (VotingTypes.ElectionParams memory) {
@@ -126,15 +157,9 @@ contract ElectionRegistryTest is Test {
         });
     }
 
-    function _configureKeyperSet(KeyperSet target) private {
-        address[] memory members = new address[](2);
+    function _members() private pure returns (address[] memory members) {
+        members = new address[](2);
         members[0] = address(0x1001);
         members[1] = address(0x1002);
-
-        vm.startPrank(voteManager);
-        target.addMembers(members);
-        target.setThreshold(2);
-        target.setFinalized();
-        vm.stopPrank();
     }
 }

@@ -4,7 +4,7 @@ This directory contains the Foundry contracts for the Shutter ElGamal voting bul
 
 The contract scope covers:
 
-- `KeyperSet` configuration and finalization
+- `KeyperSet` immutable membership and threshold configuration
 - `ElectionRegistry` deployment and indexing of elections
 - `Election` DKG result publication
 - ballot submission with full on-chain proof storage
@@ -49,23 +49,22 @@ The contract scope covers:
 
 ### `KeyperSet`
 
-`KeyperSet` is the owner-controlled keyper committee contract. It is used by elections to determine membership and threshold.
+`KeyperSet` is the immutable keyper committee contract. It is used by elections to determine membership and threshold.
 
 Implemented behavior:
 
-- owner-only member configuration
+- constructor-time member and threshold configuration
 - duplicate member rejection
 - zero-address rejection
 - threshold validation
-- one-way finalization lock
 - getters and membership checks
 
 Available read methods include:
 
-- `isFinalized`
 - `getNumMembers`
 - `getMember`
 - `getMembers`
+- `getMemberIndex`
 - `getThreshold`
 - `isMember`
 
@@ -83,9 +82,8 @@ Implemented behavior:
 
 `publishElection` validates that the supplied `KeyperSet` is:
 
-- finalized
 - non-empty
-- configured with a non-zero threshold
+- configured with a non-zero threshold no greater than the keyper count
 
 ### `Election`
 
@@ -120,6 +118,8 @@ Implemented behavior:
 - finalization once the keyper threshold is reached
 - storage of the finalized election public key
 - storage of finalized committee public keys
+- `DKGVoteRegistered` includes the voting keyper and submitted `pkElection`
+- `DKGResultPublished` includes the finalized `pkElection` and committee public keys
 
 Read helpers:
 
@@ -144,7 +144,7 @@ Implemented behavior:
   - pseudonym
   - voter verification key
   - timestamp
-  - fee paid
+  - submitting address
   - ciphertexts
   - ballot proof bytes
   - voter signature
@@ -162,7 +162,6 @@ Validation:
 
 - DKG must be finalized
 - voting must be within the configured time window
-- result must not be finalized yet
 - pseudonym must be non-zero
 - voter verification key must be a 48-byte compressed G1 point
 - ciphertext count must equal `numCandidates`
@@ -190,7 +189,6 @@ Validation:
 
 - DKG must be finalized
 - voting must already be closed
-- result must not be finalized yet
 - caller must be a keyper
 - caller may only submit once
 - `shares.length` must equal `numCandidates`
@@ -214,7 +212,6 @@ Validation:
 
 - DKG must be finalized
 - voting must already be closed
-- result must not be finalized yet
 - aggregate ciphertext count must equal `numCandidates`
 - each aggregate ciphertext point must be 96-byte compressed G2 bytes
 
@@ -226,7 +223,7 @@ Implemented behavior:
 - restricted to `TALLY_AGGREGATOR_ROLE`
 - storage of final totals
 - storage of the keyper indices used for the tally
-- immutable election state after finalization
+- later publications overwrite the stored result
 
 Read helpers:
 
@@ -237,7 +234,6 @@ Validation:
 
 - DKG must be finalized
 - voting must already be closed
-- result must not already be finalized
 - totals length must match `numCandidates`
 - `keyperIndices` must be non-empty
 
@@ -247,13 +243,11 @@ Implemented behavior:
 
 - `withdrawFees(address payable recipient)`
 - restricted to `DEFAULT_ADMIN_ROLE`
-- only callable after result finalization
 - `FeesWithdrawn` event emission
 - direct ETH transfers rejected through `receive` and `fallback`
 
 Validation:
 
-- result must already be finalized
 - recipient must be non-zero
 - failed ETH transfer reverts
 
@@ -286,7 +280,6 @@ These interfaces include:
 
 - events
 - external getters
-- write methods
 - query helpers
 
 ## Finalized Design Decisions
@@ -294,7 +287,7 @@ These interfaces include:
 The following decisions are already encoded in the contract implementation:
 
 - duplicate keypers are not allowed
-- elections can only be created from finalized, non-empty keyper sets
+- elections can only be created from non-empty keyper sets with a valid threshold
 - DKG publication uses a canonical first submission and threshold confirmation by the remaining keypers
 - ballot proof blobs, voter signatures, and WR attestations are stored on-chain
 - WR public key is part of election configuration
@@ -316,7 +309,6 @@ It:
 
 - deploys `KeyperSet`
 - deploys `ElectionRegistry`
-- configures and finalizes the keyper set
 - creates the initial `Election` through the registry
 - logs deployed addresses after broadcast
 
@@ -361,7 +353,7 @@ The contract package is covered by unit tests and invariant tests.
 Test coverage includes:
 
 - scaffold deployment
-- keyper set configuration and finalization
+- keyper set construction and validation
 - registry creation and validation rules
 - DKG threshold voting
 - ballot submission and reads

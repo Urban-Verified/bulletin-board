@@ -6,8 +6,8 @@ import {IKeyperSet} from "./IKeyperSet.sol";
 import {VotingTypes} from "../VotingTypes.sol";
 
 interface IElection is IAccessControl {
-    event DKGVoteRegistered(address indexed keyper, bytes32 indexed digest);
-    event DKGCompleted(bytes32 indexed digest, bytes pkElection, bytes[] committeePKs);
+    event DKGVoteRegistered(address indexed keyper, bytes pkElection);
+    event DKGResultPublished(bytes pkElection, bytes[] committeePKs);
     event VoteSubmitted(bytes32 indexed pseudonym, uint256 indexed ballotIndex);
     event AggregatePublished(uint256 indexed electionId);
     event DecryptionSharePosted(uint8 indexed keyperIndex);

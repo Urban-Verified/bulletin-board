@@ -33,19 +33,13 @@ contract ElectionAdminTest is Test {
     uint256 private selfSubmitFee = 0.01 ether;
 
     function setUp() external {
-        keyperSet = new KeyperSet(owner);
-        election = new Election(owner, 1, keyperSet, _params());
-
         address[] memory members = new address[](3);
         members[0] = keyper1;
         members[1] = keyper2;
         members[2] = keyper3;
 
-        vm.startPrank(owner);
-        keyperSet.addMembers(members);
-        keyperSet.setThreshold(2);
-        keyperSet.setFinalized();
-        vm.stopPrank();
+        keyperSet = new KeyperSet(members, 2);
+        election = new Election(owner, 1, keyperSet, _params());
 
         _finalizeDkg();
         vm.deal(voter, 1 ether);
@@ -99,12 +93,14 @@ contract ElectionAdminTest is Test {
         election.withdrawFees(payable(address(rejectEth)));
     }
 
-    function test_withdrawFeesRejectsBeforeResultFinalization() external {
+    function test_withdrawFeesTransfersBeforeResultFinalization() external {
         _submitVote(_pseudonym("pseudo-1"));
 
         vm.prank(owner);
-        vm.expectRevert(Election.ResultNotFinalized.selector);
-        election.withdrawFees(treasury);
+        uint256 amount = election.withdrawFees(treasury);
+
+        assertEq(amount, selfSubmitFee);
+        assertEq(address(election).balance, 0);
     }
 
     function test_directETHTransfersRevert() external {
