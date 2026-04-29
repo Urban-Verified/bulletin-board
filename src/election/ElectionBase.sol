@@ -11,7 +11,6 @@ abstract contract ElectionBase is AccessControl, IElection {
     error AlreadyFinalized();
     error AlreadyVoted(address keyper);
     error BallotNotFound(bytes32 pseudonym);
-    error DKGSubmissionMismatch();
     error InvalidCommitteeLength(uint256 actualLength, uint256 expectedLength);
     error InvalidConfig();
     error InvalidG1PointLength(uint256 actualLength);
@@ -52,7 +51,6 @@ abstract contract ElectionBase is AccessControl, IElection {
 
     bytes internal wrPublicKey;
     bool internal dkgFinalized;
-    uint64 internal dkgVoteCount;
     bytes internal electionPublicKey;
     bytes[] internal committeePublicKeys;
     VotingTypes.BallotRecord[] internal ballotRecords;
@@ -65,6 +63,7 @@ abstract contract ElectionBase is AccessControl, IElection {
 
     // forge-lint: disable-next-line(mixed-case-variable)
     mapping(address => bool) internal hasVotedForDKG;
+    mapping(bytes32 => uint64) internal dkgVoteCountByResult;
     mapping(address => bool) internal hasSubmittedDecryptionShare;
 
     constructor(address admin, uint256 electionId_, IKeyperSet keyperSet_, VotingTypes.ElectionParams memory params) {

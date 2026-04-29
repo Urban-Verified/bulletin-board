@@ -50,7 +50,7 @@ Each keyper k independently calls:
 ```solidity
 voteDKGResult(
     bytes  pkElection,        // aggregated election public key (G2, 96B)
-    bytes[] committeePKs      // all n individual committee PKs, G2, 96B each
+    bytes[] committeePKs      // all n individual committee PKs, sorted by keyper index
 )
 ```
 
@@ -59,10 +59,17 @@ Contract behaviour:
 - Requires `KeyperSet.isMember(msg.sender)` and keyper has not voted yet.
 - Computes `digest = keccak256(abi.encode(pkElection, committeePKs))`.
 - Increments `votesFor[digest]`; sets `hasVoted[msg.sender] = true`.
-- Emits `DKGVoteRegistered(keyper, digest)`.
+- Emits `DKGVoteRegistered(keyper, pkElection)`.
 - When `votesFor[digest] >= threshold`, stores `(pkElection, committeePKs)` once,
-  emits `DKGCompleted(digest, pkElection, committeePKs)`, locks DKG phase.
+  emits `DKGResultPublished(pkElection, committeePKs)`, locks DKG phase.
 - Subsequent duplicate votes revert with `AlreadyFinalized`.
+
+Ordering requirement:
+
+- Every keyper must submit `committeePKs` sorted by immutable keyper index from the election's `KeyperSet`.
+- `committeePKs[i]` must be the public key for `keyperSet.getMember(i)`.
+- A keyper can read its own index with `keyperSet.getMemberIndex(keyperAddress)`.
+- Mismatched ordering changes the DKG result digest and therefore votes for a different result.
 
 All n committee PKs are published together in the single winning tally. Any
 keyper-selection / Lagrange math is performed off-chain by the Tally Aggregator
@@ -99,8 +106,8 @@ Rules:
 ## 9. Events (minimum set)
 
 - `ElectionCreated(address election, uint256 electionId)`
-- `DKGVoteRegistered(address keyper, bytes32 digest)`
-- `DKGCompleted(bytes32 digest, bytes pkElection, bytes[] committeePKs)`
+- `DKGVoteRegistered(address keyper, bytes pkElection)`
+- `DKGResultPublished(bytes pkElection, bytes[] committeePKs)`
 - `VoteSubmitted(bytes pseudonym, uint256 ballotIndex)`
 - `DecryptionSharePosted(address keyper)`
 - `ResultFinalized(uint256[] totals)`

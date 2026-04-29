@@ -119,13 +119,20 @@ Implemented behavior:
 - `voteDKGResult(bytes pkElection, bytes[] committeePKs)`
 - keyper-only participation
 - one DKG vote per keyper
-- first valid submission becomes the canonical DKG result
-- later keyper submissions must match the same `pkElection` and `committeePKs`
-- finalization once the keyper threshold is reached
+- votes are counted by `keccak256(abi.encode(pkElection, committeePKs))`
+- different DKG results can receive votes independently
+- finalization once one DKG result reaches the keyper threshold
 - storage of the finalized election public key
 - storage of finalized committee public keys
 - `DKGVoteRegistered` includes the voting keyper and submitted `pkElection`
 - `DKGResultPublished` includes the finalized `pkElection` and committee public keys
+
+Ordering requirement:
+
+- every keyper must submit `committeePKs` sorted by the immutable keyper indices from the election's `KeyperSet`
+- `committeePKs[i]` must be the public key for `keyperSet.getMember(i)`
+- a keyper can read its own index with `keyperSet.getMemberIndex(keyperAddress)`
+- `committeePKs` ordering is part of the DKG result digest, so mismatched ordering votes for a different result
 
 Read helpers:
 
@@ -294,7 +301,8 @@ The following decisions are already encoded in the contract implementation:
 
 - duplicate keypers are not allowed
 - elections can only be created from non-empty keyper sets with a valid threshold
-- DKG publication uses a canonical first submission and threshold confirmation by the remaining keypers
+- DKG publication uses threshold voting by full result digest, so the first keyper cannot pin the canonical result
+- DKG committee public keys must be sorted by keyper index; use `KeyperSet.getMemberIndex(address)` to map a keyper address to its index
 - ballot proof blobs, voter signatures, and WR attestations are stored on-chain
 - WR public key is part of election configuration
 - curve points are stored as `bytes`

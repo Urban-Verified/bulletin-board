@@ -104,26 +104,64 @@ contract ElectionDKGTest is Test {
         election.voteDKGResult(_g2Point(1), committeePKs);
     }
 
-    function test_voteDKGResultRequiresSamePublishedResult() external {
-        bytes memory firstPkElection = _g2Point(1);
-        bytes[] memory firstCommitteePKs = _committeePKs(10);
+    function test_voteDKGResultFinalizesResultThatReachesThreshold() external {
+        bytes memory maliciousPkElection = _g2Point(1);
+        bytes[] memory maliciousCommitteePKs = _committeePKs(10);
 
-        bytes memory secondPkElection = _g2Point(2);
-        bytes[] memory secondCommitteePKs = _committeePKs(20);
+        bytes memory honestPkElection = _g2Point(2);
+        bytes[] memory honestCommitteePKs = _committeePKs(20);
 
         vm.prank(keyper1);
-        election.voteDKGResult(firstPkElection, firstCommitteePKs);
+        election.voteDKGResult(maliciousPkElection, maliciousCommitteePKs);
+        assertFalse(election.isDKGFinalized());
+
+        (, VotingTypes.DKGResult memory emptyDkgResult) = election.getElection();
+        assertEq(emptyDkgResult.pkElection.length, 0);
+        assertEq(emptyDkgResult.committeePKs.length, 0);
 
         vm.prank(keyper2);
-        vm.expectRevert(ElectionBase.DKGSubmissionMismatch.selector);
-        election.voteDKGResult(secondPkElection, secondCommitteePKs);
+        election.voteDKGResult(honestPkElection, honestCommitteePKs);
+        assertFalse(election.isDKGFinalized());
 
         vm.prank(keyper3);
-        election.voteDKGResult(firstPkElection, firstCommitteePKs);
+        election.voteDKGResult(honestPkElection, honestCommitteePKs);
 
         assertTrue(election.isDKGFinalized());
         (, VotingTypes.DKGResult memory dkgResult) = election.getElection();
-        assertEq(dkgResult.pkElection, firstPkElection);
+        assertEq(dkgResult.pkElection, honestPkElection);
+        assertEq(dkgResult.committeePKs.length, 3);
+        assertEq(dkgResult.committeePKs[0], honestCommitteePKs[0]);
+        assertEq(dkgResult.committeePKs[1], honestCommitteePKs[1]);
+        assertEq(dkgResult.committeePKs[2], honestCommitteePKs[2]);
+    }
+
+    function test_voteDKGResultRequiresSameCommitteeKeyOrdering() external {
+        bytes memory pkElection = _g2Point(1);
+        bytes[] memory jumbledCommitteePKs = _committeePKs(10);
+        bytes[] memory canonicalCommitteePKs = _committeePKs(10);
+
+        jumbledCommitteePKs[0] = canonicalCommitteePKs[2];
+        jumbledCommitteePKs[1] = canonicalCommitteePKs[0];
+        jumbledCommitteePKs[2] = canonicalCommitteePKs[1];
+
+        vm.prank(keyper1);
+        election.voteDKGResult(pkElection, jumbledCommitteePKs);
+        assertFalse(election.isDKGFinalized());
+
+        vm.prank(keyper2);
+        election.voteDKGResult(pkElection, canonicalCommitteePKs);
+        assertFalse(election.isDKGFinalized());
+
+        vm.prank(keyper3);
+        election.voteDKGResult(pkElection, canonicalCommitteePKs);
+
+        assertTrue(election.isDKGFinalized());
+        (, VotingTypes.DKGResult memory dkgResult) = election.getElection();
+        assertEq(dkgResult.pkElection, pkElection);
+        assertEq(dkgResult.committeePKs.length, 3);
+        assertEq(dkgResult.committeePKs[0], canonicalCommitteePKs[0]);
+        assertEq(dkgResult.committeePKs[1], canonicalCommitteePKs[1]);
+        assertEq(dkgResult.committeePKs[2], canonicalCommitteePKs[2]);
     }
 
     function test_voteDKGResultRejectsAfterFinalization() external {
