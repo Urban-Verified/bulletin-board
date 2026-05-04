@@ -1,0 +1,400 @@
+# Shutter Voting Contracts
+
+This directory contains the Foundry contracts for the Shutter ElGamal voting bulletin board.
+
+The contract scope covers:
+
+- `KeyperSet` immutable membership and threshold configuration
+- `ElectionRegistry` deployment and indexing of elections
+- `Election` DKG result publication
+- ballot submission with full on-chain proof storage
+- decryption share submission
+- tally finalization
+- post-completion fee withdrawal
+- stable interfaces for integration
+- deployment script and test coverage
+
+## Repository Layout
+
+### Core contracts
+
+- `src/KeyperSet.sol`
+- `src/ElectionRegistry.sol`
+- `src/Election.sol`
+- `src/election/ElectionBase.sol`
+- `src/election/ElectionDKG.sol`
+- `src/election/ElectionVoting.sol`
+- `src/election/ElectionTally.sol`
+- `src/election/ElectionDecryption.sol`
+- `src/election/ElectionAdmin.sol`
+- `src/VotingTypes.sol`
+
+### Interfaces
+
+- `src/interfaces/IKeyperSet.sol`
+- `src/interfaces/IElection.sol`
+- `src/interfaces/IElectionRegistry.sol`
+
+### Scripts
+
+- `script/Deploy.s.sol`
+- `script/DeployLocal.s.sol`
+
+### Tests
+
+- `test/Scaffold.t.sol`
+- `test/KeyperSet.t.sol`
+- `test/ElectionRegistry.t.sol`
+- `test/ElectionDKG.t.sol`
+- `test/ElectionVote.t.sol`
+- `test/ElectionTally.t.sol`
+- `test/ElectionAdmin.t.sol`
+- `test/ElectionInvariant.t.sol`
+
+## Contract Overview
+
+### `KeyperSet`
+
+`KeyperSet` is the immutable keyper committee contract. It is used by elections to determine membership and threshold.
+
+Implemented behavior:
+
+- constructor-time member and threshold configuration
+- duplicate member rejection
+- zero-address rejection
+- threshold validation
+- getters and membership checks
+
+Available read methods include:
+
+- `getNumMembers`
+- `getMember`
+- `getMembers`
+- `getMemberIndex`
+- `getThreshold`
+- `isMember`
+
+### `ElectionRegistry`
+
+`ElectionRegistry` is the admin-gated factory and index for `Election` instances.
+
+Implemented behavior:
+
+- `DEFAULT_ADMIN_ROLE`-gated `publishElection`
+- sequential `electionId` assignment
+- address lookup by election id
+- paged lookup through `getElections`
+- `ElectionCreated` event emission
+
+`publishElection` validates that the supplied `KeyperSet` is:
+
+- non-empty
+- configured with a non-zero threshold no greater than the keyper count
+
+### `Election`
+
+`Election` is the per-election bulletin board contract.
+
+Immutable election configuration:
+
+- `electionId`
+- `keyperSet`
+- `votingStart`
+- `votingEnd`
+- `selfSubmitFee`
+- `numCandidates`
+- `budget`
+- `pkWR`
+
+Configured roles:
+
+- `DEFAULT_ADMIN_ROLE`
+- `TALLY_AGGREGATOR_ROLE`
+- `VOTE_PROXY_ROLE`
+
+#### DKG result publication
+
+Implemented behavior:
+
+- `voteDKGResult(bytes pkElection, bytes[] committeePKs)`
+- keyper-only participation
+- one DKG vote per keyper
+- votes are counted by `keccak256(abi.encode(pkElection, committeePKs))`
+- different DKG results can receive votes independently
+- finalization once one DKG result reaches the keyper threshold
+- storage of the finalized election public key
+- storage of finalized committee public keys
+- `DKGVoteRegistered` includes the voting keyper and submitted `pkElection`
+- `DKGResultPublished` includes the finalized `pkElection` and committee public keys
+
+Ordering requirement:
+
+- every keyper must submit `committeePKs` sorted by the immutable keyper indices from the election's `KeyperSet`
+- `committeePKs[i]` must be the public key for `keyperSet.getMember(i)`
+- a keyper can read its own index with `keyperSet.getMemberIndex(keyperAddress)`
+- `committeePKs` ordering is part of the DKG result digest, so mismatched ordering votes for a different result
+
+Read helpers:
+
+- `isDKGFinalized`
+- `getElection`
+
+Validation:
+
+- election public key must be 96-byte compressed G2 bytes
+- each committee public key must be 96-byte compressed G2 bytes
+- committee public key count must match keyper count
+
+#### Ballot submission
+
+Implemented behavior:
+
+- public `submitVote(Ballot)`
+- self-submit fee enforcement
+- fee waiver for callers with `VOTE_PROXY_ROLE`
+- append-only ballot storage
+- on-chain storage of:
+  - pseudonym
+  - voter verification key
+  - timestamp
+  - submitting address
+  - ciphertexts
+  - ballot proof bytes
+  - voter signature
+  - WR attestation
+
+Read helpers:
+
+- `getNumBallots`
+- `getBallot(bytes32 pseudonym)`
+- `getBallots`
+- `getElection`
+- `getPhase`
+
+Validation:
+
+- DKG must be finalized
+- voting must be within the configured time window
+- pseudonym must be non-zero
+- voter verification key must be a 48-byte compressed G1 point
+- ciphertext count must equal `numCandidates`
+- proof bytes must be present
+- voter signature bytes must be present
+- WR attestation bytes must be present
+- each ciphertext point must be 96-byte compressed G2 bytes
+- `msg.value` must match the expected fee rule exactly
+
+#### Decryption share submission
+
+Implemented behavior:
+
+- `submitDecryptionShare(bytes[] shares, DLEQProof[] proofs)`
+- one share bundle per keyper
+- on-chain storage of one share per candidate
+- on-chain storage of one proof per candidate
+- storage of the publishing keyper index
+
+Read helpers:
+
+- `getDecryptionShares`
+
+Validation:
+
+- DKG must be finalized
+- voting must already be closed
+- caller must be a keyper
+- caller may only submit once
+- `shares.length` must equal `numCandidates`
+- `proofs.length` must equal `numCandidates`
+- each share must be a 96-byte compressed G2 point
+
+#### Aggregate publication
+
+Implemented behavior:
+
+- `publishAggregate(EncryptedTally)`
+- restricted to `TALLY_AGGREGATOR_ROLE`
+- aggregate ciphertext storage
+- aggregate proof blob storage
+
+Read helpers:
+
+- `getAggregate`
+
+Validation:
+
+- DKG must be finalized
+- voting must already be closed
+- aggregate ciphertext count must equal `numCandidates`
+- each aggregate ciphertext point must be 96-byte compressed G2 bytes
+
+#### Final result publication
+
+Implemented behavior:
+
+- `publishResult(uint256[] totals, uint8[] keyperIndices)`
+- restricted to `TALLY_AGGREGATOR_ROLE`
+- storage of final totals
+- storage of the keyper indices used for the tally
+- later publications overwrite the stored result
+
+Read helpers:
+
+- `isResultFinalized`
+- `getResult`
+
+Validation:
+
+- DKG must be finalized
+- voting must already be closed
+- totals length must match `numCandidates`
+- `keyperIndices` must be non-empty
+
+#### Fee withdrawal
+
+Implemented behavior:
+
+- `withdrawFees(address payable recipient)`
+- restricted to `DEFAULT_ADMIN_ROLE`
+- `FeesWithdrawn` event emission
+- direct ETH transfers rejected through `receive` and `fallback`
+
+Validation:
+
+- recipient must be non-zero
+- failed ETH transfer reverts
+
+## Shared Types
+
+`src/VotingTypes.sol` defines the shared structs used across contract boundaries:
+
+- `ElectionParams`
+- `DLEQProof`
+- `Ciphertext`
+- `Ballot`
+- `BallotRecord`
+- `DKGResult`
+- `ElectionConfigView`
+- `EncryptedTally`
+- `DecryptionShare`
+- `ElectionResult`
+
+All curve-related values are stored as raw `bytes` in contract storage.
+
+## Stable Interfaces
+
+The integration surface is exposed through:
+
+- `IKeyperSet`
+- `IElection`
+- `IElectionRegistry`
+
+These interfaces include:
+
+- events
+- external getters
+- query helpers
+
+## Finalized Design Decisions
+
+The following decisions are already encoded in the contract implementation:
+
+- duplicate keypers are not allowed
+- elections can only be created from non-empty keyper sets with a valid threshold
+- DKG publication uses threshold voting by full result digest, so the first keyper cannot pin the canonical result
+- DKG committee public keys must be sorted by keyper index; use `KeyperSet.getMemberIndex(address)` to map a keyper address to its index
+- ballot proof blobs, voter signatures, and WR attestations are stored on-chain
+- WR public key is part of election configuration
+- curve points are stored as `bytes`
+- `submitVote` is public
+- the fee waiver applies to the contract fee, not gas costs
+- revotes are appended as new ballots
+- one decryption-share bundle is stored per keyper, with one share and one proof per candidate
+- fees are withdrawable only after election completion
+- no on-chain pairing verification is performed
+
+## Deployment Scripts
+
+### `script/Deploy.s.sol`
+
+`Deploy.s.sol` is the generic deployment script for any Foundry-supported network.
+
+It:
+
+- deploys `KeyperSet`
+- deploys `ElectionRegistry`
+- creates the initial `Election` through the registry
+- logs deployed addresses after broadcast
+
+Supported environment variables:
+
+- `VOTE_MANAGER`
+- `PRIVATE_KEY` fallback for deriving `VOTE_MANAGER` if `VOTE_MANAGER` is unset
+- `KEYPERS` as a comma-separated list of keyper addresses
+- or `KEYPER_COUNT` plus `KEYPER_1`, `KEYPER_2`, ... `KEYPER_N`
+- `KEYPER_THRESHOLD`
+- `TALLY_AGGREGATOR`
+- `VOTE_PROXY`
+- `PK_WR`
+- `VOTING_START`
+- `VOTING_END`
+- `SELF_SUBMIT_FEE`
+- `NUM_CANDIDATES`
+- `BUDGET`
+
+If `KEYPER_THRESHOLD` is unset, it defaults to the full keyper count.
+
+Example:
+
+```shell
+export PRIVATE_KEY=...
+export KEYPERS=0x1111111111111111111111111111111111111111,0x2222222222222222222222222222222222222222,0x3333333333333333333333333333333333333333
+export KEYPER_THRESHOLD=2
+export TALLY_AGGREGATOR=0x4444444444444444444444444444444444444444
+export VOTE_PROXY=0x5555555555555555555555555555555555555555
+
+forge script script/Deploy.s.sol:DeployScript --rpc-url <RPC_URL> --broadcast
+```
+
+### `script/DeployLocal.s.sol`
+
+`DeployLocal.s.sol` remains as a small local/demo deployment helper.
+
+## Validation
+
+The contract package is covered by unit tests and invariant tests.
+
+Test coverage includes:
+
+- scaffold deployment
+- keyper set construction and validation
+- registry creation and validation rules
+- DKG threshold voting
+- ballot submission and reads
+- decryption share submission and reads
+- result finalization
+- fee withdrawal
+- stateful invariants for ballot count, share count, and fee balance
+
+Validated commands:
+
+```shell
+forge build
+forge test
+```
+
+At the time of writing, the full suite passes.
+
+## Notes
+
+- `getPhase()` currently returns `0`, `2`, `3`, `4`, and `5`. There is no separate on-chain phase `1` because the current election config does not include a distinct registration boundary.
+- `forge build` uses `via_ir = true` in `foundry.toml` because `getElection()` returns nested structs and otherwise hits Solidity stack-depth limits.
+
+## Quick Commands
+
+```shell
+forge build
+forge test
+forge fmt
+forge script script/Deploy.s.sol:DeployScript --rpc-url <RPC_URL> --broadcast
+```
