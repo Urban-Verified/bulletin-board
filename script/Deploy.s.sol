@@ -2,61 +2,37 @@
 pragma solidity ^0.8.24;
 
 import {Script, console2} from "forge-std/Script.sol";
-import {Election} from "../src/Election.sol";
 import {ElectionRegistry} from "../src/ElectionRegistry.sol";
 import {KeyperSet} from "../src/KeyperSet.sol";
-import {VotingTypes} from "../src/VotingTypes.sol";
 
 contract DeployScript is Script {
     error InvalidKeyperCount();
     error InvalidThreshold(uint256 threshold, uint256 keyperCount);
-    error InvalidVotingWindow(uint256 votingStart, uint256 votingEnd);
     error MissingEnv(string name);
     error MissingKeyperConfiguration();
     error ValueTooLarge(string name, uint256 value, uint256 maxValue);
 
     struct DeploymentConfig {
         address admin;
-        address tallyAggregator;
-        address voteProxy;
         uint64 threshold;
-        uint64 votingStart;
-        uint64 votingEnd;
-        uint256 selfSubmitFee;
-        uint32 numCandidates;
-        uint32 budget;
         address[] keypers;
     }
 
-    function run() external returns (KeyperSet keyperSet, ElectionRegistry registry, Election election) {
+    function run() external returns (KeyperSet keyperSet, ElectionRegistry registry) {
         DeploymentConfig memory config = _loadConfig();
 
         vm.startBroadcast();
         keyperSet = new KeyperSet(config.keypers, config.threshold);
         registry = new ElectionRegistry(config.admin);
-
-        address electionAddress = registry.publishElection(keyperSet, _electionParams(config));
-        election = Election(payable(electionAddress));
         vm.stopBroadcast();
 
-        _logDeployment(keyperSet, registry, election, config);
+        _logDeployment(keyperSet, registry, config);
     }
 
     function _loadConfig() private view returns (DeploymentConfig memory config) {
         config.admin = _loadAdmin();
         config.keypers = _loadKeypers();
         config.threshold = _loadThreshold(config.keypers.length);
-        config.votingStart = _toUint64("VOTING_START", vm.envOr("VOTING_START", uint256(block.timestamp + 1 hours)));
-        config.votingEnd = _toUint64("VOTING_END", vm.envOr("VOTING_END", uint256(block.timestamp + 25 hours)));
-        config.selfSubmitFee = vm.envOr("SELF_SUBMIT_FEE", uint256(0.01 ether));
-        config.numCandidates = _toUint32("NUM_CANDIDATES", vm.envOr("NUM_CANDIDATES", uint256(3)));
-        config.budget = _toUint32("BUDGET", vm.envOr("BUDGET", uint256(1)));
-        config.tallyAggregator = vm.envOr("TALLY_AGGREGATOR", config.admin);
-        config.voteProxy = vm.envOr("VOTE_PROXY", config.admin);
-
-        if (config.votingEnd <= config.votingStart) {
-            revert InvalidVotingWindow(config.votingStart, config.votingEnd);
-        }
     }
 
     function _loadAdmin() private view returns (address admin) {
@@ -97,46 +73,21 @@ contract DeployScript is Script {
         threshold = _toUint64("KEYPER_THRESHOLD", thresholdRaw);
     }
 
-    function _electionParams(DeploymentConfig memory config) private view returns (VotingTypes.ElectionParams memory) {
-        return VotingTypes.ElectionParams({
-            votingStart: config.votingStart,
-            votingEnd: config.votingEnd,
-            selfSubmitFee: config.selfSubmitFee,
-            numCandidates: config.numCandidates,
-            budget: config.budget,
-            pkWR: vm.envOr("PK_WR", bytes("")),
-            tallyAggregator: config.tallyAggregator,
-            voteProxy: config.voteProxy
-        });
-    }
-
-    function _logDeployment(
-        KeyperSet keyperSet,
-        ElectionRegistry registry,
-        Election election,
-        DeploymentConfig memory config
-    ) private view {
+    function _logDeployment(KeyperSet keyperSet, ElectionRegistry registry, DeploymentConfig memory config)
+        private
+        view
+    {
         console2.log("Deployment complete");
         console2.log("Admin:", config.admin);
         console2.log("KeyperSet:", address(keyperSet));
         console2.log("ElectionRegistry:", address(registry));
-        console2.log("Election:", address(election));
-        console2.log("Election ID:", election.electionId());
         console2.log("Keyper threshold:", uint256(config.threshold));
         console2.log("Keyper count:", config.keypers.length);
-        console2.log("Tally aggregator:", config.tallyAggregator);
-        console2.log("Vote proxy:", config.voteProxy);
     }
 
     function _toUint64(string memory name, uint256 value) private pure returns (uint64 result) {
         if (value > type(uint64).max) revert ValueTooLarge(name, value, type(uint64).max);
         // forge-lint: disable-next-line(unsafe-typecast)
         result = uint64(value);
-    }
-
-    function _toUint32(string memory name, uint256 value) private pure returns (uint32 result) {
-        if (value > type(uint32).max) revert ValueTooLarge(name, value, type(uint32).max);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        result = uint32(value);
     }
 }

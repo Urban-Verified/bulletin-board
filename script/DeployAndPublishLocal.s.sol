@@ -7,7 +7,8 @@ import {KeyperSet} from "../src/KeyperSet.sol";
 import {ElectionRegistry} from "../src/ElectionRegistry.sol";
 import {VotingTypes} from "../src/VotingTypes.sol";
 
-contract DeployLocalScript is Script {
+/// @notice Low-friction local bootstrap: deploy + publish one default election.
+contract DeployAndPublishLocalScript is Script {
     function run() external returns (KeyperSet keyperSet, ElectionRegistry registry, Election election) {
         address admin = vm.envOr("VOTE_MANAGER", msg.sender);
         address[] memory keypers = _keypers(admin);

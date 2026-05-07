@@ -38,7 +38,8 @@ The contract scope covers:
 ### Scripts
 
 - `script/Deploy.s.sol`
-- `script/DeployLocal.s.sol`
+- `script/DeployAndPublishLocal.s.sol`
+- `script/PublishElection.s.sol`
 
 ### Tests
 
@@ -323,8 +324,9 @@ It:
 
 - deploys `KeyperSet`
 - deploys `ElectionRegistry`
-- creates the initial `Election` through the registry
 - logs deployed addresses after broadcast
+
+It does **not** publish an election. Use `script/PublishElection.s.sol` to create elections on top of an existing deployment.
 
 Supported environment variables:
 
@@ -333,14 +335,6 @@ Supported environment variables:
 - `KEYPERS` as a comma-separated list of keyper addresses
 - or `KEYPER_COUNT` plus `KEYPER_1`, `KEYPER_2`, ... `KEYPER_N`
 - `KEYPER_THRESHOLD`
-- `TALLY_AGGREGATOR`
-- `VOTE_PROXY`
-- `PK_WR`
-- `VOTING_START`
-- `VOTING_END`
-- `SELF_SUBMIT_FEE`
-- `NUM_CANDIDATES`
-- `BUDGET`
 
 If `KEYPER_THRESHOLD` is unset, it defaults to the full keyper count.
 
@@ -350,15 +344,74 @@ Example:
 export PRIVATE_KEY=...
 export KEYPERS=0x1111111111111111111111111111111111111111,0x2222222222222222222222222222222222222222,0x3333333333333333333333333333333333333333
 export KEYPER_THRESHOLD=2
-export TALLY_AGGREGATOR=0x4444444444444444444444444444444444444444
-export VOTE_PROXY=0x5555555555555555555555555555555555555555
 
 forge script script/Deploy.s.sol:DeployScript --rpc-url <RPC_URL> --broadcast
 ```
 
-### `script/DeployLocal.s.sol`
+### `script/PublishElection.s.sol`
 
-`DeployLocal.s.sol` remains as a small local/demo deployment helper.
+`PublishElection.s.sol` publishes (deploys) a new `Election` via an **existing**
+`ElectionRegistry` and **existing** `KeyperSet`.
+
+It calls:
+
+- `ElectionRegistry.publishElection(IKeyperSet keyperSet, VotingTypes.ElectionParams params)`
+
+Required environment variables (suitable for a `.env` file):
+
+- `PRIVATE_KEY`: admin private key (must have `DEFAULT_ADMIN_ROLE` on the registry)
+- `REGISTRY`: deployed `ElectionRegistry` address
+- `KEYPER_SET`: deployed `KeyperSet` address
+- `VOTING_START`: unix timestamp (seconds)
+- `VOTING_END`: unix timestamp (seconds)
+- `SELF_SUBMIT_FEE`: fee in wei for direct `submitVote` (set `0` if unused)
+- `NUM_CANDIDATES`: number of candidates
+- `BUDGET`: max selections / per-ballot budget parameter
+- `PK_WR`: WR public key bytes (typically **48 bytes**, e.g. `0x...`)
+- `TALLY_AGGREGATOR`: address that will hold `TALLY_AGGREGATOR_ROLE`
+- `VOTE_PROXY`: address that will hold `VOTE_PROXY_ROLE`
+
+Example `.env`:
+
+```shell
+PRIVATE_KEY=0x...
+REGISTRY=0x...
+KEYPER_SET=0x...
+
+VOTING_START=1715000000
+VOTING_END=1715003600
+SELF_SUBMIT_FEE=0
+NUM_CANDIDATES=2
+BUDGET=1
+PK_WR=0x...
+TALLY_AGGREGATOR=0x...
+VOTE_PROXY=0x...
+```
+
+Run:
+
+```shell
+set -a
+source .env
+set +a
+
+forge script script/PublishElection.s.sol:PublishElection --rpc-url <RPC_URL> --broadcast
+```
+
+### `script/DeployAndPublishLocal.s.sol`
+
+`DeployAndPublishLocal.s.sol` is a small local/demo bootstrap helper.
+
+It deploys and publishes in one run:
+
+- `KeyperSet` with 2 keypers (`KEYPER_1`, `KEYPER_2`) and threshold 2
+- `ElectionRegistry`
+- an initial `Election` via `ElectionRegistry.publishElection` (with quick defaults)
+
+This script is meant for local demo flows only. For real deployments, use:
+
+- `script/Deploy.s.sol` (deploy once)
+- `script/PublishElection.s.sol` (publish elections many times)
 
 ## Validation
 
