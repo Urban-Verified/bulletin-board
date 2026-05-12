@@ -66,7 +66,6 @@ library VotingTypes {
 
     struct EncryptedTally {
         Ciphertext[] aggregates;
-        bytes proof;
     }
 
     struct DecryptionShare {

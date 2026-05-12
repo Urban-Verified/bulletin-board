@@ -79,7 +79,6 @@ contract ElectionTallyTest is Test {
         assertEq(storedAggregate.aggregates.length, 3);
         assertEq(storedAggregate.aggregates[0].c1, aggregate.aggregates[0].c1);
         assertEq(storedAggregate.aggregates[2].c2, aggregate.aggregates[2].c2);
-        assertEq(storedAggregate.proof, aggregate.proof);
     }
 
     function test_getDecryptionSharesReturnsRanges() external {
@@ -265,7 +264,6 @@ contract ElectionTallyTest is Test {
 
     function _aggregate(uint8 seed) private pure returns (VotingTypes.EncryptedTally memory aggregate) {
         aggregate.aggregates = _ciphertexts(seed);
-        aggregate.proof = abi.encodePacked(seed, seed + 1, seed + 2, seed + 3);
     }
 
     function _pseudonym(string memory label) private pure returns (bytes32) {

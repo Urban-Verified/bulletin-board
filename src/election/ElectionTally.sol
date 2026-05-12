@@ -11,7 +11,6 @@ abstract contract ElectionTally is ElectionBase {
         if (aggregate.aggregates.length != numCandidates) revert InvalidAggregatePayload();
 
         delete encryptedTally.aggregates;
-        encryptedTally.proof = aggregate.proof;
         for (uint256 index = 0; index < aggregate.aggregates.length; index++) {
             _requireG2Point(aggregate.aggregates[index].c1);
             _requireG2Point(aggregate.aggregates[index].c2);
