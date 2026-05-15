@@ -21,7 +21,9 @@ contract DeployScript is Script {
     function run() external returns (KeyperSet keyperSet, ElectionRegistry registry) {
         DeploymentConfig memory config = _loadConfig();
 
-        vm.startBroadcast();
+        uint256 deployerPk = vm.envUint("PRIVATE_KEY");
+        vm.startBroadcast(deployerPk);
+
         keyperSet = new KeyperSet(config.keypers, config.threshold);
         registry = new ElectionRegistry(config.admin);
         vm.stopBroadcast();
