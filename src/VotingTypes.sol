@@ -37,9 +37,20 @@ library VotingTypes {
         bytes wrAttestation;
     }
 
+    /// @notice Stored form of a ballot. Identical to `Ballot` except that the
+    /// zkProof is kept as a 32-byte commitment rather than in full.
+    struct BallotView {
+        bytes32 pseudonym;
+        bytes vk;
+        Ciphertext[] ciphertexts;
+        bytes32 zkProofHash;
+        bytes voterSignature;
+        bytes wrAttestation;
+    }
+
     /// @notice Stored ballot metadata alongside the user payload.
     struct BallotRecord {
-        Ballot ballot;
+        BallotView ballot;
         uint64 submittedAt;
         address submittedBy;
     }

@@ -8,7 +8,7 @@ import {VotingTypes} from "../VotingTypes.sol";
 interface IElection is IAccessControl {
     event DKGVoteRegistered(address indexed keyper, bytes pkElection);
     event DKGResultPublished(bytes pkElection, bytes[] committeePKs);
-    event VoteSubmitted(bytes32 indexed pseudonym, uint256 indexed ballotIndex);
+    event VoteSubmitted(bytes32 indexed pseudonym, uint256 indexed ballotIndex, bytes zkProof);
     event AggregatePublished(uint256 indexed electionId);
     event DecryptionSharePosted(uint8 indexed keyperIndex);
     event ResultPublished(uint256[] tally, uint8[] keyperIndices);
@@ -32,8 +32,8 @@ interface IElection is IAccessControl {
 
     function submitVote(VotingTypes.Ballot calldata ballot) external payable;
     function getNumBallots() external view returns (uint256);
-    function getBallot(bytes32 pseudonym) external view returns (VotingTypes.Ballot memory ballot);
-    function getBallots(uint256 startIndex, uint256 count) external view returns (VotingTypes.Ballot[] memory ballots);
+    function getBallot(bytes32 pseudonym) external view returns (VotingTypes.BallotView memory ballot);
+    function getBallots(uint256 startIndex, uint256 count) external view returns (VotingTypes.BallotView[] memory ballots);
 
     function publishAggregate(VotingTypes.EncryptedTally calldata encryptedTally) external;
     function getAggregate() external view returns (VotingTypes.EncryptedTally memory encryptedTally);
