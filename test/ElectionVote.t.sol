@@ -45,7 +45,7 @@ contract ElectionVoteTest is Test {
 
         vm.warp(votingStart);
         vm.expectEmit(true, true, false, true, address(election));
-        emit IElection.VoteSubmitted(ballot.pseudonym, 0);
+        emit IElection.VoteSubmitted(ballot.pseudonym, 0, ballot.zkProof);
 
         vm.prank(voter);
         election.submitVote{value: selfSubmitFee}(ballot);
@@ -53,11 +53,11 @@ contract ElectionVoteTest is Test {
         assertEq(election.getNumBallots(), 1);
         assertEq(address(election).balance, selfSubmitFee);
 
-        VotingTypes.Ballot[] memory ballots = election.getBallots(0, 1);
-        VotingTypes.Ballot memory storedBallot = ballots[0];
+        VotingTypes.BallotView[] memory ballots = election.getBallots(0, 1);
+        VotingTypes.BallotView memory storedBallot = ballots[0];
         assertEq(storedBallot.pseudonym, ballot.pseudonym);
         assertEq(storedBallot.vk, ballot.vk);
-        assertEq(storedBallot.zkProof, ballot.zkProof);
+        assertEq(storedBallot.zkProofHash, keccak256(ballot.zkProof));
         assertEq(storedBallot.voterSignature, ballot.voterSignature);
         assertEq(storedBallot.wrAttestation, ballot.wrAttestation);
         assertEq(storedBallot.ciphertexts.length, 3);
@@ -83,12 +83,12 @@ contract ElectionVoteTest is Test {
         vm.stopPrank();
 
         assertEq(election.getNumBallots(), 2);
-        VotingTypes.Ballot[] memory ballots = election.getBallots(0, 2);
+        VotingTypes.BallotView[] memory ballots = election.getBallots(0, 2);
         bytes32 firstPseudonym = ballots[0].pseudonym;
         bytes32 secondPseudonym = ballots[1].pseudonym;
         assertEq(firstPseudonym, secondPseudonym);
 
-        VotingTypes.Ballot memory latestBallot = election.getBallot(_pseudonym("same-pseudonym"));
+        VotingTypes.BallotView memory latestBallot = election.getBallot(_pseudonym("same-pseudonym"));
         assertEq(latestBallot.vk, ballots[1].vk);
         assertEq(latestBallot.ciphertexts[0].c1, ballots[1].ciphertexts[0].c1);
     }
@@ -101,7 +101,7 @@ contract ElectionVoteTest is Test {
         election.submitVote{value: selfSubmitFee}(_ballot(_pseudonym("pseudo-2"), 20));
         vm.stopPrank();
 
-        VotingTypes.Ballot[] memory ballots = election.getBallots(0, 2);
+        VotingTypes.BallotView[] memory ballots = election.getBallots(0, 2);
         assertEq(ballots.length, 2);
         assertEq(ballots[0].pseudonym, _pseudonym("pseudo-1"));
         assertEq(ballots[1].pseudonym, _pseudonym("pseudo-2"));
@@ -120,7 +120,7 @@ contract ElectionVoteTest is Test {
         vm.prank(voter);
         election.submitVote{value: selfSubmitFee}(ballot);
 
-        VotingTypes.Ballot memory latestBallot = election.getBallot(_pseudonym("pseudo-1"));
+        VotingTypes.BallotView memory latestBallot = election.getBallot(_pseudonym("pseudo-1"));
         assertEq(latestBallot.pseudonym, ballot.pseudonym);
         assertEq(latestBallot.vk, ballot.vk);
         assertEq(latestBallot.wrAttestation, ballot.wrAttestation);
