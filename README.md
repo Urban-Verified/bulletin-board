@@ -1,16 +1,56 @@
-# Shutter Voting Contracts
+# Urban Verified: Bulletin Board (Smart Contracts)
 
-This directory contains the Foundry contracts for the Shutter ElGamal voting bulletin board.
+> **Part of the Urban Verified: Private and Verifiable Online Voting stack.**
+> To understand the full end-to-end architecture, start with the [thresholdELGamal README](https://github.com/Urban-Verified/thresholdELGamal#readme).
+
+This repository contains the Foundry smart contracts that act as the public **bulletin board** of an election. Everything that has to be public and tamper-proof is written here: the election setup, the election public key, every encrypted ballot, the encrypted total, the keypers' decryption shares and the final result.
+
+## Where this fits
+
+The contracts are the single shared record that every other part of the system reads from and writes to. They store data and enforce who may write what and when; they do **not** check the cryptographic proofs. Proof checking happens off-chain in the tally aggregator and in the Voting Dashboard, and anyone can repeat it from the data stored here.
+
+```
+  Election admin ─── publishElection ──────────────────>  ┌──────────────────────┐
+  Keypers ────────── voteDKGResult ────────────────────>  │                      │
+  Vote proxy ─────── submitVote (encrypted ballots) ───>  │   ElectionRegistry   │
+  Tally aggregator ─ publishAggregate, publishResult ──>  │   + Election         │
+  Keypers ────────── submitDecryptionShare ────────────>  │   + KeyperSet        │
+                                                          │                      │
+  Tally aggregator, Voting Dashboard, anyone  <── read ─  │                      │
+                                                          └──────────────────────┘
+```
+
+| Who | Writes | Reads |
+|---|---|---|
+| Election admin | New elections via `ElectionRegistry.publishElection` | |
+| Keypers ([thresholdELGamal](https://github.com/Urban-Verified/thresholdELGamal)) | DKG result vote, decryption shares | Election config, encrypted total |
+| Vote proxy | Encrypted ballots (`submitVote`) | |
+| Tally aggregator ([thresholdELGamal](https://github.com/Urban-Verified/thresholdELGamal)) | Encrypted total, final result | Ballots and their proofs, decryption shares |
+| [Voting Dashboard](https://github.com/Urban-Verified/voting-dashboard) and anyone | | Everything |
+
+The `pkWR` field in each election is the public key of the **Voter Registry Oracle** (*Wahlregister*), the service that confirms a voter is eligible. Every ballot carries its signed attestation.
+
+The contract ABIs are copied into [`thresholdELGamal/abis`](https://github.com/Urban-Verified/thresholdELGamal/tree/main/abis). When a contract interface changes here, those ABIs must be refreshed too.
+
+### Related repositories
+
+| Repository | Role |
+|---|---|
+| [`thresholdELGamal`](https://github.com/Urban-Verified/thresholdELGamal) | Keypers, DKG coordinator, tally aggregator. Entry point for the whole system |
+| [`shutter-voting-sdk`](https://github.com/Urban-Verified/shutter-voting-sdk) | TypeScript SDK that builds and verifies encrypted ballots (`@shutter-network/urban-verified-crypto`) |
+| [`voting-dashboard`](https://github.com/Urban-Verified/voting-dashboard) | Read-only website that follows and verifies each election |
+
+## Contract scope
 
 The contract scope covers:
 
 - `KeyperSet` immutable membership and threshold configuration
 - `ElectionRegistry` deployment and indexing of elections
 - `Election` DKG result publication
-- ballot submission with full on-chain proof storage
+- ballot submission (proof hash stored on chain, full proof emitted in the `VoteSubmitted` event)
 - decryption share submission
 - tally finalization
-- post-completion fee withdrawal
+- fee withdrawal by the admin
 - stable interfaces for integration
 - deployment script and test coverage
 
@@ -51,6 +91,7 @@ The contract scope covers:
 - `test/ElectionTally.t.sol`
 - `test/ElectionAdmin.t.sol`
 - `test/ElectionInvariant.t.sol`
+- `test/BallotProofStorage.t.sol`
 
 ## Contract Overview
 
@@ -105,7 +146,7 @@ Immutable election configuration:
 - `selfSubmitFee`
 - `numCandidates`
 - `budget`
-- `pkWR`
+- `pkWR` (public key of the Voter Registry Oracle)
 
 Configured roles:
 
@@ -153,16 +194,17 @@ Implemented behavior:
 - public `submitVote(Ballot)`
 - self-submit fee enforcement
 - fee waiver for callers with `VOTE_PROXY_ROLE`
-- append-only ballot storage
+- append-only ballot storage; a re-vote appends a new record, and `getBallot(pseudonym)` returns the newest one
 - on-chain storage of:
   - pseudonym
   - voter verification key
   - timestamp
   - submitting address
   - ciphertexts
-  - ballot proof bytes
+  - keccak256 hash of the ballot proof (`zkProofHash`)
   - voter signature
   - WR attestation
+- the full ballot proof bytes are emitted in `VoteSubmitted(pseudonym, ballotIndex, zkProof)` instead of being stored, which keeps large ballots under the block gas limit. Readers recover the proof from the event log and check it against `zkProofHash`
 
 Read helpers:
 
@@ -216,7 +258,7 @@ Implemented behavior:
 - `publishAggregate(EncryptedTally)`
 - restricted to `TALLY_AGGREGATOR_ROLE`
 - aggregate ciphertext storage
-- aggregate proof blob storage
+- a later call replaces the stored aggregate
 
 Read helpers:
 
@@ -274,6 +316,7 @@ Validation:
 - `Ciphertext`
 - `Ballot`
 - `BallotRecord`
+- `BallotView`
 - `DKGResult`
 - `ElectionConfigView`
 - `EncryptedTally`
@@ -304,14 +347,14 @@ The following decisions are already encoded in the contract implementation:
 - elections can only be created from non-empty keyper sets with a valid threshold
 - DKG publication uses threshold voting by full result digest, so the first keyper cannot pin the canonical result
 - DKG committee public keys must be sorted by keyper index; use `KeyperSet.getMemberIndex(address)` to map a keyper address to its index
-- ballot proof blobs, voter signatures, and WR attestations are stored on-chain
+- voter signatures and WR attestations are stored on-chain; ballot proofs are stored as a keccak256 hash, with the full bytes in the `VoteSubmitted` event
 - WR public key is part of election configuration
 - curve points are stored as `bytes`
 - `submitVote` is public
 - the fee waiver applies to the contract fee, not gas costs
 - revotes are appended as new ballots
 - one decryption-share bundle is stored per keyper, with one share and one proof per candidate
-- fees are withdrawable only after election completion
+- collected fees can be withdrawn by `DEFAULT_ADMIN_ROLE` at any time
 - no on-chain pairing verification is performed
 
 ## Deployment Scripts
@@ -330,8 +373,8 @@ It does **not** publish an election. Use `script/PublishElection.s.sol` to creat
 
 Supported environment variables:
 
-- `VOTE_MANAGER`
-- `PRIVATE_KEY` fallback for deriving `VOTE_MANAGER` if `VOTE_MANAGER` is unset
+- `PRIVATE_KEY` (required): the deployer key that broadcasts the transactions
+- `VOTE_MANAGER`: registry admin; defaults to the `PRIVATE_KEY` address if unset
 - `KEYPERS` as a comma-separated list of keyper addresses
 - or `KEYPER_COUNT` plus `KEYPER_1`, `KEYPER_2`, ... `KEYPER_N`
 - `KEYPER_THRESHOLD`
@@ -367,7 +410,7 @@ Required environment variables (suitable for a `.env` file):
 - `SELF_SUBMIT_FEE`: fee in wei for direct `submitVote` (set `0` if unused)
 - `NUM_CANDIDATES`: number of candidates
 - `BUDGET`: max selections / per-ballot budget parameter
-- `PK_WR`: WR public key bytes (typically **48 bytes**, e.g. `0x...`)
+- `PK_WR`: public key of the Voter Registry Oracle (a compressed G1 point, 48 bytes, e.g. `0x...`; the length is not checked on chain)
 - `TALLY_AGGREGATOR`: address that will hold `TALLY_AGGREGATOR_ROLE`
 - `VOTE_PROXY`: address that will hold `VOTE_PROXY_ROLE`
 
@@ -408,6 +451,16 @@ It deploys and publishes in one run:
 - `ElectionRegistry`
 - an initial `Election` via `ElectionRegistry.publishElection` (with quick defaults)
 
+```shell
+forge script script/DeployAndPublishLocal.s.sol:DeployAndPublishLocalScript --rpc-url http://127.0.0.1:8545 --broadcast
+```
+
+Before running it, note that the defaults do not work on their own:
+
+- set `KEYPER_1` and `KEYPER_2` to two different addresses. Both default to the admin, and `KeyperSet` rejects duplicates
+- leave `VOTE_MANAGER` unset or set it to the broadcasting address, because only the registry admin can publish the election
+- set `PK_WR`, which defaults to empty bytes
+
 This script is meant for local demo flows only. For real deployments, use:
 
 - `script/Deploy.s.sol` (deploy once)
@@ -440,7 +493,7 @@ At the time of writing, the full suite passes.
 
 ## Notes
 
-- `getPhase()` currently returns `0`, `2`, `3`, `4`, and `5`. There is no separate on-chain phase `1` because the current election config does not include a distinct registration boundary.
+- `getPhase()` returns `0` (waiting for DKG), `2` (DKG finalized, before voting), `3` (voting open) or `4` (voting closed). There is no phase `1` because the election config has no separate registration boundary. Whether the result is published is read with `isResultFinalized()`.
 - `forge build` uses `via_ir = true` in `foundry.toml` because `getElection()` returns nested structs and otherwise hits Solidity stack-depth limits.
 
 ## Quick Commands
